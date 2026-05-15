@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
+const { recommend } = require("./mlFitnessModel");
 
 const app = express();
 
@@ -25,6 +26,28 @@ const pool = new Pool({
 
 pool.on("error", (err) => {
   console.error("Unexpected error on idle client", err);
+});
+
+app.post("/ai/recommendation", (req, res) => {
+  try {
+    const { age, gender, healthProblems, goal } = req.body;
+
+    if (!age || !gender || !goal) {
+      return res.status(400).json({ error: "age, gender ve goal zorunludur" });
+    }
+
+    const result = recommend({
+      age: Number(age),
+      gender,
+      healthProblems: healthProblems || "Yok",
+      goal,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("AI recommendation error:", error);
+    res.status(500).json({ error: "AI recommendation failed" });
+  }
 });
 
 // Health Check
@@ -332,6 +355,121 @@ app.get("/api/auth/profile/:id", async (req, res) => {
       success: false,
       error: err.message,
     });
+  }
+});
+
+// ==================== AI HEALTH PROFILE + ML RECOMMENDATION ENDPOINTS ====================
+
+async function ensureHealthProfileTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_health_profiles (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      age INTEGER NOT NULL,
+      gender VARCHAR(50) NOT NULL,
+      health_problems TEXT DEFAULT 'none',
+      goal VARCHAR(100) NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+}
+
+// Sağlık profilini getir
+app.get("/api/health-profile/:userId", async (req, res) => {
+  try {
+    await ensureHealthProfileTable();
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      "SELECT user_id, age, gender, health_problems, goal, updated_at FROM user_health_profiles WHERE user_id = $1",
+      [userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.json({
+        success: true,
+        data: null,
+        message: "Health profile not found",
+      });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error("GET /api/health-profile error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Sağlık profilini kaydet/güncelle
+app.post("/api/health-profile", async (req, res) => {
+  try {
+    await ensureHealthProfileTable();
+    const { userId, age, gender, healthProblems, goal } = req.body;
+
+    if (!userId || !age || !gender || !goal) {
+      return res.status(400).json({
+        success: false,
+        error: "userId, age, gender and goal are required",
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO user_health_profiles (user_id, age, gender, health_problems, goal, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET age = EXCLUDED.age,
+                     gender = EXCLUDED.gender,
+                     health_problems = EXCLUDED.health_problems,
+                     goal = EXCLUDED.goal,
+                     updated_at = NOW()
+       RETURNING user_id, age, gender, health_problems, goal, updated_at`,
+      [userId, age, gender, healthProblems || "none", goal]
+    );
+
+    const aiResult = recommend({ age, gender, healthProblems, goal });
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+      aiRecommendation: aiResult,
+      message: "Health profile saved and AI model updated",
+    });
+  } catch (err) {
+    console.error("POST /api/health-profile error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Kaydedilmiş profile göre ML önerisini getir
+app.get("/api/ai-recommendation/:userId", async (req, res) => {
+  try {
+    await ensureHealthProfileTable();
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      "SELECT age, gender, health_problems, goal FROM user_health_profiles WHERE user_id = $1",
+      [userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Health profile not found. Please save profile first.",
+      });
+    }
+
+    const profile = result.rows[0];
+    const aiResult = recommend({
+      age: profile.age,
+      gender: profile.gender,
+      healthProblems: profile.health_problems,
+      goal: profile.goal,
+    });
+
+    res.json({ success: true, data: aiResult });
+  } catch (err) {
+    console.error("GET /api/ai-recommendation error:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

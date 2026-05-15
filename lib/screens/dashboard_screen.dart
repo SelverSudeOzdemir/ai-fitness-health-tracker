@@ -1,39 +1,73 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/gym_location_provider.dart';
+import '../models/ai_recommendation.dart';
+import '../services/ai_service.dart';
 import '../utils/app_colors.dart';
-import 'map_screen.dart';
 import 'profile_screen.dart';
+import 'recommendation_detail_screen.dart';
+import 'map_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({Key? key}) : super(key: key);
-
+  const DashboardScreen({super.key});
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
+  bool _loading = false;
+  AiRecommendation? _recommendation;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAiRecommendation();
+  }
+
+  Future<void> _loadAiRecommendation() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    try {
+      final data = await AiService.getRecommendation();
+      if (!mounted) return;
+      setState(() {
+        _recommendation = data;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _recommendation = null;
+        _loading = false;
+      });
+    }
+  }
+
+  void _openDetail(String type) {
+    final r = _recommendation;
+    if (r == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            RecommendationDetailScreen(type: type, recommendation: r),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.black,
       appBar: AppBar(
-        title: const Text('AI Fitness Tracker'),
+        backgroundColor: AppColors.black,
         elevation: 0,
+        title: const Text('AI Fitness Tracker'),
         actions: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: CircleAvatar(
-              backgroundColor: AppColors.neon,
-              child: Text(
-                'A',
-                style: TextStyle(
-                  color: AppColors.black,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+          IconButton(
+            icon: const Icon(Icons.location_on_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MapScreen()),
             ),
           ),
         ],
@@ -44,130 +78,186 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: const Color(0xFF1A1A1A),
         selectedItemColor: AppColors.neon,
         unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
-        ],
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
+        onTap: (i) {
+          setState(() => _selectedIndex = i);
+          if (i == 0) _loadAiRecommendation();
         },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_rounded),
+            label: 'Profil',
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildHome() {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Welcome Card
-            _buildWelcomeCard(),
-            const SizedBox(height: 24),
-
-            // Stats Row
-            _buildStatsRow(),
-            const SizedBox(height: 24),
-
-            // Harita Özelliği
-            _buildMapCard(),
-            const SizedBox(height: 16),
-
-            // Quick Actions
-            _buildQuickActionsSection(),
-            const SizedBox(height: 16),
-
-            // Today's Activity
-            _buildActivityCard(),
-            const SizedBox(height: 16),
-
-            // Motivation Quote
-            _buildQuoteCard(),
-            const SizedBox(height: 24),
-          ],
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadAiRecommendation,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _heroCard(),
+              const SizedBox(height: 18),
+              _statsRow(),
+              const SizedBox(height: 18),
+              _mapPreviewCard(),
+              const SizedBox(height: 22),
+              const Text(
+                'AI Destekli Planın',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 23,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_loading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_recommendation == null)
+                _profileRequiredCard()
+              else
+                Column(
+                  children: [
+                    _planCard(
+                      title: _recommendation!.exerciseTitle,
+                      subtitle: _recommendation!.exerciseSummary,
+                      icon: Icons.fitness_center_rounded,
+                      color: AppColors.coral,
+                      badge: 'Video alanı hazır',
+                      onTap: () => _openDetail('exercise'),
+                    ),
+                    const SizedBox(height: 14),
+                    _planCard(
+                      title: _recommendation!.nutritionTitle,
+                      subtitle: _recommendation!.nutritionSummary,
+                      icon: Icons.restaurant_rounded,
+                      color: AppColors.neon,
+                      badge: '3 öğün plan',
+                      onTap: () => _openDetail('nutrition'),
+                    ),
+                    const SizedBox(height: 14),
+                    _planCard(
+                      title: _recommendation!.yogaTitle,
+                      subtitle: _recommendation!.yogaSummary,
+                      icon: Icons.self_improvement_rounded,
+                      color: AppColors.rose,
+                      badge: 'Nefes + akış',
+                      onTap: () => _openDetail('yoga'),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 24),
+              _dailyChallengeCard(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildWelcomeCard() {
-    final authProvider = context.read<AuthProvider>();
-    final userName = authProvider.currentUser?['email'] ?? 'Fitness Enthusiast';
-
+  Widget _heroCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.purple, AppColors.rose],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: AppColors.neon,
+        borderRadius: BorderRadius.circular(28),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            'Hoş Geldiniz! 👋',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineMedium?.copyWith(color: Colors.white),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bugünün planı hazır',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 27,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'AI modelin profil verilerine göre egzersiz, beslenme ve yoga önerisi oluşturur.',
+                  style: TextStyle(
+                    color: Colors.black87,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            userName,
-            style: const TextStyle(fontSize: 14, color: Colors.white70),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Bugünün antrenmanını tamamlamaya hazır mısın?',
-            style: const TextStyle(fontSize: 13, color: Colors.white),
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 36,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsRow() {
+  Widget _statsRow() {
     return Row(
       children: [
-        _buildStatCard('Adım', '8,234', Icons.directions_walk),
-        const SizedBox(width: 12),
-        _buildStatCard('Kalori', '450', Icons.local_fire_department),
-        const SizedBox(width: 12),
-        _buildStatCard('Su', '2.5L', Icons.water_drop),
+        _miniStat('Adım', '8.2K', Icons.directions_walk_rounded),
+        const SizedBox(width: 10),
+        _miniStat('Kalori', '450', Icons.local_fire_department_rounded),
+        const SizedBox(width: 10),
+        _miniStat('Süre', '45 dk', Icons.timer_rounded),
       ],
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon) {
+  Widget _miniStat(String title, String value, IconData icon) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.purple.withOpacity(0.3)),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white10),
         ),
         child: Column(
           children: [
-            Icon(icon, color: AppColors.neon, size: 24),
+            Icon(icon, color: AppColors.neon),
             const SizedBox(height: 8),
             Text(
               value,
               style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
                 color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
             ),
-            const SizedBox(height: 4),
             Text(
-              label,
-              style: const TextStyle(fontSize: 11, color: Colors.grey),
+              title,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ],
         ),
@@ -175,248 +265,200 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildMapCard() {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const MapScreen()),
-        );
-      },
+  Widget _mapPreviewCard() {
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const MapScreen()),
+      ),
+      borderRadius: BorderRadius.circular(24),
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.neon.withOpacity(0.3)),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.neon.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: const [
+            Icon(Icons.map_rounded, color: AppColors.neon, size: 38),
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Yakındaki Spor Salonları',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 5),
+                  Text(
+                    'Harita, favori salonlar ve rota alanı hazır.',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: AppColors.neon,
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _profileRequiredCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.redAccent),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'AI önerisi için profil gerekli',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 19,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Yaş, cinsiyet, sağlık sorunu ve hedefini kaydet.',
+            style: TextStyle(color: Colors.grey, fontSize: 15),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.neon,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: () => setState(() => _selectedIndex = 1),
+            child: const Text('Profile Git'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _planCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required String badge,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(26),
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: color.withOpacity(0.55)),
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              width: 66,
+              height: 66,
               decoration: BoxDecoration(
-                color: AppColors.neon.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(22),
               ),
-              child: const Icon(
-                Icons.location_on,
-                color: AppColors.neon,
-                size: 28,
-              ),
+              child: Icon(icon, color: color, size: 34),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'En Yakın Spor Salonları',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  Text(
+                    title,
+                    style: const TextStyle(
                       color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 5),
                   Text(
-                    'Konumunuza yakın spor salonlarını keşfet',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    subtitle.isEmpty
+                        ? 'Profil bilgilerine göre öneri hazırlandı.'
+                        : subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                  const SizedBox(height: 9),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      badge,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward, color: AppColors.neon),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Colors.white54,
+              size: 18,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildQuickActionsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Hızlı İşlemler',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            _buildActionButton(
-              Icons.fitness_center,
-              'Egzersiz',
-              AppColors.coral,
-            ),
-            const SizedBox(width: 12),
-            _buildActionButton(Icons.restaurant, 'Beslenme', AppColors.purple),
-            const SizedBox(width: 12),
-            _buildActionButton(Icons.self_improvement, 'Yoga', AppColors.rose),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionButton(IconData icon, String label, Color color) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('$label başlatılıyor...')));
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3)),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 24),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActivityCard() {
+  Widget _dailyChallengeCard() {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.purple.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Bugünün Aktivitesi',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildActivityItem('Sabah Koşusu', '5 km', '45 min', AppColors.neon),
-          const SizedBox(height: 10),
-          _buildActivityItem(
-            'Ağırlık Antrenmanı',
-            '10 set',
-            '60 min',
-            AppColors.coral,
-          ),
-          const SizedBox(height: 10),
-          _buildActivityItem('Yoga', '30 min', '🧘', AppColors.rose),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityItem(
-    String name,
-    String distance,
-    String time,
-    Color color,
-  ) {
-    return Row(
-      children: [
-        Container(
-          width: 4,
-          height: 40,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '$distance • $time',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            '✓',
-            style: TextStyle(color: color, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuoteCard() {
-    final quotes = [
-      'Bugünün çabanız yarının gücüdür.',
-      'Başarı, küçük adımlardan oluşur.',
-      'Sağlık en büyük varlıktır.',
-      'Her antrenman seni daha güçlü yapıyor.',
-      'Kendinle yarışma, dünün seninle yarış.',
-    ];
-    final quote = quotes[DateTime.now().day % quotes.length];
-
-    return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.rose.withOpacity(0.2),
-            AppColors.purple.withOpacity(0.2),
+            AppColors.purple.withOpacity(0.45),
+            AppColors.rose.withOpacity(0.25),
           ],
         ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.rose.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white10),
       ),
-      child: Row(
+      child: const Row(
         children: [
-          const Icon(Icons.lightbulb, color: AppColors.neon, size: 24),
-          const SizedBox(width: 12),
+          Icon(Icons.emoji_events_rounded, color: AppColors.neon, size: 34),
+          SizedBox(width: 14),
           Expanded(
             child: Text(
-              quote,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Colors.white,
-                fontStyle: FontStyle.italic,
-              ),
+              'Günün hedefi: Planındaki ilk egzersizi tamamla ve 2 litre su iç.',
+              style: TextStyle(color: Colors.white, fontSize: 15, height: 1.35),
             ),
           ),
         ],
@@ -425,6 +467,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildProfile() {
-    return const ProfileScreen();
+    return ProfileScreen(
+      onProfileSaved: () async {
+        setState(() => _selectedIndex = 0);
+        await _loadAiRecommendation();
+      },
+    );
   }
 }

@@ -1,220 +1,221 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import '../services/ai_service.dart';
 import '../utils/app_colors.dart';
-import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  final VoidCallback? onProfileSaved;
+  const ProfileScreen({super.key, this.onProfileSaved});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _notificationsEnabled = true;
-  bool _darkModeEnabled = true;
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _ageController = TextEditingController();
+  final TextEditingController _heightController = TextEditingController();
+  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _healthController = TextEditingController();
+
+  final List<String> _genders = const [
+    'Kadın',
+    'Erkek',
+    'Belirtmek istemiyorum',
+  ];
+  final List<String> _goals = const [
+    'Zayıflamak istiyorum',
+    'Fit devam edeceğim',
+    'Kilo almak istiyorum',
+  ];
+
+  String _selectedGender = 'Kadın';
+  String _selectedGoal = 'Fit devam edeceğim';
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final profile = AiService.lastProfile;
+    if (profile != null) {
+      _ageController.text = profile.age.toString();
+      _healthController.text = profile.healthProblems;
+      _selectedGender = _genders.contains(profile.gender)
+          ? profile.gender
+          : 'Kadın';
+      _selectedGoal = _goals.contains(profile.goal)
+          ? profile.goal
+          : 'Fit devam edeceğim';
+    }
+  }
+
+  @override
+  void dispose() {
+    _ageController.dispose();
+    _heightController.dispose();
+    _weightController.dispose();
+    _healthController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+
+    try {
+      await AiService.saveProfile(
+        age: int.parse(_ageController.text.trim()),
+        gender: _selectedGender,
+        healthProblems: _healthController.text.trim(),
+        goal: _selectedGoal,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profil kaydedildi. AI önerileri güncellendi.'),
+        ),
+      );
+      widget.onProfileSaved?.call();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Profil kaydedilirken hata oluştu: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.read<AuthProvider>();
-    final userEmail = authProvider.currentUser?['email'] ?? 'User';
-    final userName = userEmail.split('@')[0];
-
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // Profile Header
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.neon.withOpacity(0.8),
-                  AppColors.purple.withOpacity(0.8),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.white,
-                  child: Text(
-                    userName[0].toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.neon,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  userName.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  userEmail,
-                  style: const TextStyle(fontSize: 14, color: Colors.white70),
-                ),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Stats Section
-                const Text(
-                  'İstatistikler',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _buildStatBox('Antrenman', '24', AppColors.neon),
-                    const SizedBox(width: 12),
-                    _buildStatBox('Kalori', '8,450', AppColors.coral),
-                    const SizedBox(width: 12),
-                    _buildStatBox('Streak', '7 gün', AppColors.rose),
-                  ],
-                ),
-
-                const SizedBox(height: 28),
-
-                // Settings Section
-                const Text(
-                  'Ayarlar',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Notification Setting
-                _buildSettingItem(
-                  Icons.notifications,
-                  'Bildirimler',
-                  'Push bildirimleri al',
-                  _notificationsEnabled,
-                  (value) {
-                    setState(() {
-                      _notificationsEnabled = value;
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
-                // Dark Mode Setting
-                _buildSettingItem(
-                  Icons.dark_mode,
-                  'Dark Mode',
-                  'Tema: Siyah',
-                  _darkModeEnabled,
-                  (value) {
-                    setState(() {
-                      _darkModeEnabled = value;
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 28),
-
-                // Account Section
-                const Text(
-                  'Hesap',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                _buildMenuItemButton(
-                  Icons.edit,
-                  'Profili Düzenle',
-                  'Bilgilerinizi güncelleyin',
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Profil düzenleme yakında!'),
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              _profileHeader(),
+              const SizedBox(height: 18),
+              _sectionCard(
+                title: 'Kişisel Bilgiler',
+                icon: Icons.person_rounded,
+                children: [
+                  _label('Yaş'),
+                  _numberField(_ageController, 'Örn: 22', requiredField: true),
+                  const SizedBox(height: 14),
+                  _label('Boy / Kilo'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _numberField(_heightController, 'Boy cm'),
                       ),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
-                _buildMenuItemButton(
-                  Icons.lock,
-                  'Şifreyi Değiştir',
-                  'Güvenlik için şifrenizi güncelleyin',
-                  () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Şifre değiştir yakında!')),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
-                _buildMenuItemButton(
-                  Icons.info,
-                  'Hakkında',
-                  'Uygulamayı hakkında bilgi',
-                  () {
-                    _showAboutDialog(context);
-                  },
-                ),
-
-                const SizedBox(height: 28),
-
-                // Logout Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      _showLogoutDialog(context, authProvider);
-                    },
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Çıkış Yap'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.coral,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _numberField(_weightController, 'Kilo kg'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _label('Cinsiyet'),
+                  _dropdown(
+                    _selectedGender,
+                    _genders,
+                    (v) => setState(() => _selectedGender = v),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _sectionCard(
+                title: 'Sağlık ve Hedef',
+                icon: Icons.health_and_safety_rounded,
+                children: [
+                  _label('Sağlık Sorunları'),
+                  TextFormField(
+                    controller: _healthController,
+                    minLines: 3,
+                    maxLines: 5,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _inputDecoration(
+                      'Diz ağrısı, bel fıtığı, astım... Yoksa boş bırak.',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _label('Hedef'),
+                  _dropdown(
+                    _selectedGoal,
+                    _goals,
+                    (v) => setState(() => _selectedGoal = v),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _goalPreview(),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.neon,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  onPressed: _isSaving ? null : _saveProfile,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.black,
+                          ),
+                        )
+                      : const Icon(Icons.auto_awesome_rounded),
+                  label: Text(
+                    _isSaving
+                        ? 'AI modeli güncelleniyor...'
+                        : 'Profili Kaydet ve AI Modelini Güncelle',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
                     ),
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-                const SizedBox(height: 16),
-
-                // Version Info
-                Center(
-                  child: Text(
-                    'Versiyon 1.0.0',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                ),
-              ],
+  Widget _profileHeader() {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppColors.neon,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: const Row(
+        children: [
+          CircleAvatar(
+            radius: 34,
+            backgroundColor: Colors.black,
+            child: Icon(Icons.person_rounded, color: Colors.white, size: 38),
+          ),
+          SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              'Profilini doldur, AI modelin sana özel egzersiz, beslenme ve yoga planı oluştursun.',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 16,
+                height: 1.35,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -222,199 +223,153 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildStatBox(String label, String value, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: color,
+  Widget _sectionCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppColors.neon),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
       ),
     );
   }
 
-  Widget _buildSettingItem(
-    IconData icon,
-    String title,
-    String subtitle,
-    bool value,
-    Function(bool) onChanged,
-  ) {
+  Widget _goalPreview() {
     return Container(
-      padding: const EdgeInsets.all(14),
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.purple.withOpacity(0.45),
+            AppColors.rose.withOpacity(0.25),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.neon.withOpacity(0.25)),
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.purple.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: AppColors.purple, size: 20),
-          ),
+          const Icon(Icons.flag_rounded, color: AppColors.neon, size: 32),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
+            child: Text(
+              'Seçilen hedef: $_selectedGoal',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
             ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppColors.neon,
-            inactiveThumbColor: Colors.grey[600],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMenuItemButton(
-    IconData icon,
-    String title,
-    String subtitle,
-    VoidCallback onTap,
+  Widget _label(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _numberField(
+    TextEditingController controller,
+    String hint, {
+    bool requiredField = false,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      style: const TextStyle(color: Colors.white),
+      decoration: _inputDecoration(hint),
+      validator: requiredField
+          ? (value) {
+              final number = int.tryParse(value ?? '');
+              if (number == null || number < 10 || number > 100)
+                return 'Geçerli değer gir.';
+              return null;
+            }
+          : null,
+    );
+  }
+
+  Widget _dropdown(
+    String value,
+    List<String> items,
+    ValueChanged<String> onChanged,
   ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.withOpacity(0.2)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.purple.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: AppColors.purple, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward, color: Colors.grey, size: 18),
-          ],
-        ),
-      ),
+    return DropdownButtonFormField<String>(
+      value: items.contains(value) ? value : items.first,
+      dropdownColor: const Color(0xFF1A1A1A),
+      style: const TextStyle(color: Colors.white),
+      decoration: _inputDecoration('Seç'),
+      items: items
+          .map(
+            (item) => DropdownMenuItem<String>(value: item, child: Text(item)),
+          )
+          .toList(),
+      onChanged: (value) {
+        if (value != null) onChanged(value);
+      },
     );
   }
 
-  void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Çıkış Yap', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Çıkış yapmak istediğinize emin misiniz?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('İptal'),
-          ),
-          TextButton(
-            onPressed: () {
-              authProvider.logout();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
-              );
-            },
-            child: const Text(
-              'Çıkış Yap',
-              style: TextStyle(color: AppColors.coral),
-            ),
-          ),
-        ],
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Colors.white38),
+      filled: true,
+      fillColor: Colors.black.withOpacity(0.35),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: AppColors.purple.withOpacity(0.35)),
       ),
-    );
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'AI Fitness Tracker Hakkında',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Versiyon 1.0.0\n\n'
-          'AI Fitness Tracker, kişisel fitness hedeflerinize ulaşmanıza yardımcı olmak için tasarlanmış modern bir uygulamadır.\n\n'
-          '© 2026 AI Fitness Tracker',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Kapat'),
-          ),
-        ],
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: AppColors.neon),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Colors.redAccent),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Colors.redAccent),
       ),
     );
   }
