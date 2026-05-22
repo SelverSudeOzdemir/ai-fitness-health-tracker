@@ -10,15 +10,18 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true 
+        // 🛠️ Java derleme sürümünü 1.8 yerine 11 yapıyoruz
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 
     kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+        compilerOptions {
+            // Burası zaten 11, yukarıdakilerle artık tamamen tutarlı oldu
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+        }
     }
-}
 
     defaultConfig {
         applicationId = "com.example.ai_fitness_health_tracker"
@@ -37,4 +40,8 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
