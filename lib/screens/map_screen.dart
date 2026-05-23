@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../utils/app_colors.dart';
 import '../providers/gym_location_provider.dart';
-import '../services/gym_location_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -16,6 +16,7 @@ class _MapScreenState extends State<MapScreen> {
   late GymLocationProvider _gymProvider;
   bool _isLocationPermissionDenied = false;
   Position? _currentPosition;
+  GoogleMapController? _mapController;
 
   @override
   void initState() {
@@ -26,7 +27,6 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _initializeLocation() async {
     try {
-      // Check location permission
       LocationPermission permission = await Geolocator.checkPermission();
 
       if (permission == LocationPermission.denied) {
@@ -50,7 +50,12 @@ class _MapScreenState extends State<MapScreen> {
           _currentPosition = position;
         });
 
-        // Fetch nearby gyms
+        // Mevcut konuma harita kamerasını kaydır
+        _mapController?.animateCamera(
+          CameraUpdate.newLatLng(LatLng(position.latitude, position.longitude)),
+        );
+
+        // Salonları API'den çek
         _gymProvider.fetchNearbyGyms(
           position.latitude,
           position.longitude,
@@ -84,102 +89,75 @@ class _MapScreenState extends State<MapScreen> {
             )
           : Consumer<GymLocationProvider>(
               builder: (context, gymProvider, _) {
-                return ListView(
+                Set<Marker> markers = gymProvider.nearbyGyms.map((gym) {
+                  return Marker(
+                    markerId: MarkerId(gym.id.toString()),
+                    position: LatLng(gym.latitude, gym.longitude),
+                    infoWindow: InfoWindow(
+                      title: gym.name,
+                      snippet: gym.address,
+                    ),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueRed,
+                    ),
+                  );
+                }).toSet();
+
+                Set<Circle> circles = {
+                  Circle(
+                    circleId: const CircleId("search_area"),
+                    center: LatLng(
+                      _currentPosition!.latitude,
+                      _currentPosition!.longitude,
+                    ),
+                    radius: gymProvider.searchRadius * 1000,
+                    fillColor: AppColors.neon.withOpacity(0.1),
+                    strokeColor: AppColors.neon,
+                    strokeWidth: 2,
+                  ),
+                };
+
+                return Column(
                   children: [
-                    // Location Info Card
-                    _buildLocationCard(),
-
-                    // Search Radius Slider
-                    _buildRadiusSlider(),
-
-                    // Nearby Gyms List
-                    if (gymProvider.isLoading)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: CircularProgressIndicator(color: AppColors.neon),
-                      )
-                    else if (gymProvider.error != null)
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Card(
-                          color: AppColors.coral.withOpacity(0.1),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              'Hata: ${gymProvider.error}',
-                              style: const TextStyle(
-                                color: AppColors.coral,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.4,
+                      child: GoogleMap(
+                        onMapCreated: (controller) =>
+                            _mapController = controller,
+                        initialCameraPosition: CameraPosition(
+                          target: LatLng(
+                            _currentPosition!.latitude,
+                            _currentPosition!.longitude,
                           ),
+                          zoom: 12.0,
                         ),
-                      )
-                    else if (gymProvider.nearbyGyms.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          children: const [
-                            Icon(
-                              Icons.location_off,
-                              size: 64,
-                              color: AppColors.purple,
-                            ),
-                            SizedBox(height: 16),
-                            Text(
-                              'Yakın çevrede spor salonu bulunamadı',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${gymProvider.nearbyGyms.length} Spor Salonu Bulundu',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: gymProvider.nearbyGyms.length,
-                              itemBuilder: (context, index) {
-                                final gym = gymProvider.nearbyGyms[index];
-                                final distance = gymProvider.calculateDistance(
-                                  gym,
-                                );
-
-                                return _buildGymCard(
-                                  gym,
-                                  distance,
-                                  gymProvider.isGymFavorited(gym.id),
-                                  () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            GymDetailsScreen(gym: gym),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ],
-                        ),
+                        markers: markers,
+                        circles: circles,
+                        myLocationEnabled: true,
+                        myLocationButtonEnabled: true,
                       ),
+                    ),
+
+                    Expanded(
+                      child: ListView(
+                        children: [
+                          _buildRadiusSlider(),
+
+                          if (gymProvider.isLoading)
+                            const Center(
+                              child: CircularProgressIndicator(
+                                color: AppColors.neon,
+                              ),
+                            )
+                          else if (gymProvider.error != null)
+                            _buildErrorCard(gymProvider.error!)
+                          else if (gymProvider.nearbyGyms.isEmpty)
+                            _buildEmptyState()
+                          else
+                            _buildGymList(gymProvider),
+                        ],
+                      ),
+                    ),
                   ],
                 );
               },
@@ -187,78 +165,77 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Widget _buildLocationPermissionDenied() {
-    return Center(
+  // Yardımcı Küçük Widget Tasarımları (Kod karmaşasını önlemek için aşağıya topladım)
+  Widget _buildErrorCard(String error) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        color: AppColors.coral.withOpacity(0.1),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Hata: $error',
+            style: const TextStyle(
+              color: AppColors.coral,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return const Padding(
+      padding: EdgeInsets.all(32),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.location_off, size: 80, color: AppColors.coral),
-          const SizedBox(height: 24),
-          const Text(
-            'Konum İzni Gerekli',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              'En yakın spor salonlarını görmek için lütfen konum izni verin.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
-            onPressed: () => Geolocator.openLocationSettings(),
-            icon: const Icon(Icons.settings),
-            label: const Text('Ayarları Aç'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.neon,
-              foregroundColor: AppColors.black,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-            ),
+          Icon(Icons.location_off, size: 64, color: AppColors.purple),
+          SizedBox(height: 16),
+          Text(
+            'Yakın çevrede spor salonu bulunamadı',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 16, color: Colors.grey),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLocationCard() {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: const LinearGradient(
-            colors: [AppColors.purple, AppColors.rose],
+  Widget _buildGymList(GymLocationProvider gymProvider) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${gymProvider.nearbyGyms.length} Spor Salonu Bulundu',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-        ),
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.location_on, color: AppColors.white),
-                SizedBox(width: 12),
-                Text(
-                  'Mevcut Konumunuz',
-                  style: TextStyle(
-                    color: AppColors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Lat: ${_currentPosition?.latitude.toStringAsFixed(4)}, Lng: ${_currentPosition?.longitude.toStringAsFixed(4)}',
-              style: const TextStyle(color: AppColors.white, fontSize: 14),
-            ),
-          ],
-        ),
+          const SizedBox(height: 16),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: gymProvider.nearbyGyms.length,
+            itemBuilder: (context, index) {
+              final gym = gymProvider.nearbyGyms[index];
+              final distance = gymProvider.calculateDistance(gym);
+              return _buildGymCard(
+                gym,
+                distance,
+                gymProvider.isGymFavorited(gym.id),
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => GymDetailsScreen(gym: gym),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -329,8 +306,43 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  Widget _buildLocationPermissionDenied() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.location_off, size: 80, color: AppColors.coral),
+          const SizedBox(height: 24),
+          const Text(
+            'Konum İzni Gerekli',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              'En yakın spor salonlarını görmek için lütfen konum izni verin.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: () => Geolocator.openLocationSettings(),
+            icon: const Icon(Icons.settings),
+            label: const Text('Ayarları Aç'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.neon,
+              foregroundColor: AppColors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildGymCard(
-    Gym gym,
+    dynamic gym,
     double? distance,
     bool isFavorited,
     VoidCallback onTap,
@@ -391,9 +403,7 @@ class _MapScreenState extends State<MapScreen> {
                       isFavorited ? Icons.favorite : Icons.favorite_border,
                       color: isFavorited ? AppColors.coral : Colors.grey,
                     ),
-                    onPressed: () {
-                      // Handle favorite action
-                    },
+                    onPressed: () {},
                   ),
                 ],
               ),
@@ -443,33 +453,6 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                 ],
               ),
-              if (gym.amenities != null && gym.amenities!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: gym.amenities!.take(3).map((amenity) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.purple.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          amenity,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.purple,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
             ],
           ),
         ),
@@ -478,215 +461,19 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
-// Gym Details Screen
 class GymDetailsScreen extends StatelessWidget {
-  final Gym gym;
-
+  final dynamic gym;
   const GymDetailsScreen({super.key, required this.gym});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          gym.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(gym.name),
         backgroundColor: AppColors.neon,
         foregroundColor: AppColors.black,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Gym Image
-          if (gym.imageUrl != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                gym.imageUrl!,
-                height: 250,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    height: 250,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      color: AppColors.lightBg,
-                    ),
-                    child: const Icon(
-                      Icons.fitness_center,
-                      size: 80,
-                      color: AppColors.neon,
-                    ),
-                  );
-                },
-              ),
-            ),
-          const SizedBox(height: 24),
-
-          // Rating
-          if (gym.rating != null)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.amber.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.star, color: Colors.amber, size: 32),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${gym.rating}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        '${gym.reviewCount} yorum',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-
-          // Details
-          if (gym.description != null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Açıklama',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  gym.description!,
-                  style: const TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-
-          // Contact Info
-          _buildInfoCard(
-            icon: Icons.phone,
-            title: 'Telefon',
-            content: gym.phone ?? 'Bilgi Yok',
-            color: AppColors.purple,
-          ),
-          const SizedBox(height: 12),
-
-          _buildInfoCard(
-            icon: Icons.location_on,
-            title: 'Adres',
-            content: gym.address ?? 'Bilgi Yok',
-            color: AppColors.purple,
-          ),
-          const SizedBox(height: 12),
-
-          _buildInfoCard(
-            icon: Icons.access_time,
-            title: 'Çalışma Saatleri',
-            content: gym.openingHours ?? 'Bilgi Yok',
-            color: AppColors.purple,
-          ),
-          const SizedBox(height: 24),
-
-          // Amenities
-          if (gym.amenities != null && gym.amenities!.isNotEmpty)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Olanaklar',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: gym.amenities!.map((amenity) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.neon.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        amenity,
-                        style: const TextStyle(
-                          color: AppColors.neon,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoCard({
-    required IconData icon,
-    required String title,
-    required String content,
-    required Color color,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    content,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: Center(child: Text('${gym.name} detay sayfası hazır.')),
     );
   }
 }

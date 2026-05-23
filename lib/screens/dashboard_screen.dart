@@ -5,6 +5,7 @@ import '../utils/app_colors.dart';
 import 'profile_screen.dart';
 import 'recommendation_detail_screen.dart';
 import 'map_screen.dart';
+import '../services/notification_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -63,6 +64,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         elevation: 0,
         title: const Text('AI Fitness Tracker'),
         actions: [
+          // 🔔 YENİ: Anlık Bildirim Test Butonu
+          IconButton(
+            icon: const Icon(
+              Icons.notifications_active_outlined,
+              color: AppColors.neon,
+            ),
+            onPressed: () async {
+              await NotificationService.showInstantNotification(
+                id: 100,
+                title: "Harika Gidiyorsun! 🔥",
+                body:
+                    "Bugünkü AI planına göz atmayı unutma, antrenman seni bekler!",
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.location_on_outlined),
             onPressed: () => Navigator.push(
@@ -112,14 +128,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 18),
               _mapPreviewCard(),
               const SizedBox(height: 22),
-              const Text(
-                'AI Destekli Planın',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 23,
-                  fontWeight: FontWeight.bold,
-                ),
+              // ESKİ HALİ: const Text('AI Destekli Planın', ...)
+              // YENİ HALİ: Row yapısı ile yanına buton ekliyoruz
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'AI Destekli Planın',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 23,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      // Test amaçlı şimdiki zamandan 10 saniye sonrasına kuruyoruz
+                      final reminderTime = DateTime.now().add(
+                        const Duration(minutes: 30),
+                      );
+
+                      await NotificationService.scheduleNotification(
+                        id: 200,
+                        title: "Su İçmeyi Unutma! 💧",
+                        body:
+                            "Vücudunun hidrasyon seviyesini korumak için kocaman bir bardak su içmeye ne dersin?",
+                        scheduledTime: reminderTime,
+                      );
+
+                      // Kullanıcıya bilgi vermek için küçük bir pop-up (SnackBar)
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Yarım saat sonra su içme hatırlatıcısı gönderilecek! 💧",
+                            ),
+                            backgroundColor: AppColors.purple,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(
+                      Icons.alarm_add_rounded,
+                      size: 18,
+                      color: Colors.blue,
+                    ),
+                    label: const Text('Hatırlatıcısı Kur'),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
               const SizedBox(height: 12),
               if (_loading)
                 const Center(
@@ -348,6 +407,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: () => setState(() => _selectedIndex = 1),
             child: const Text('Profile Git'),
           ),
+          const SizedBox(height: 10),
         ],
       ),
     );

@@ -6,8 +6,13 @@ import 'providers/item_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/gym_location_provider.dart';
 import 'utils/app_colors.dart';
+import 'services/notification_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.initialize();
+
   runApp(const MyApp());
 }
 
