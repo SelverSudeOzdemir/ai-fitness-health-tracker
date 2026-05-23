@@ -299,6 +299,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // POST signup
+// POST signup
 app.post("/api/auth/signup", async (req, res) => {
   try {
     const { email, password, full_name } = req.body;
@@ -310,10 +311,16 @@ app.post("/api/auth/signup", async (req, res) => {
       });
     }
 
-    const result = await pool.query(
-      "INSERT INTO users (email, password_hash, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, email",
-      [email, password]
-    );
+    // username oluştur
+    const username = email.split("@")[0];
+
+   const result = await pool.query(
+     `INSERT INTO users
+      (username, email, password_hash, created_at, updated_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      RETURNING id, username, email`,
+     [username, email, password]
+   );
 
     res.status(201).json({
       success: true,
@@ -328,6 +335,7 @@ app.post("/api/auth/signup", async (req, res) => {
     });
   }
 });
+
 
 // GET user profile
 app.get("/api/auth/profile/:id", async (req, res) => {

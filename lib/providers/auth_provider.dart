@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../utils/constants.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -27,6 +31,8 @@ class AuthProvider extends ChangeNotifier {
     _dio.interceptors.add(
       LogInterceptor(requestBody: true, responseBody: true, error: true),
     );
+
+    _loadUser();
   }
 
   Future<bool> login(String email, String password) async {
@@ -50,9 +56,14 @@ class AuthProvider extends ChangeNotifier {
 
         if (data['success'] == true && data['data'] != null) {
           _currentUser = data['data'] as Map<String, dynamic>;
+
+          await _saveUser();
+
           _isLoading = false;
           _error = null;
+
           print('✅ Login başarılı!');
+
           notifyListeners();
           return true;
         }
@@ -65,13 +76,17 @@ class AuthProvider extends ChangeNotifier {
     } on DioException catch (e) {
       _error = 'Hata: ${e.message}';
       _isLoading = false;
+
       print('❌ Error: $_error');
+
       notifyListeners();
       return false;
     } catch (e) {
       _error = 'Hata: $e';
       _isLoading = false;
+
       print('❌ Error: $_error');
+
       notifyListeners();
       return false;
     }
@@ -97,9 +112,14 @@ class AuthProvider extends ChangeNotifier {
 
         if (data['success'] == true && data['data'] != null) {
           _currentUser = data['data'] as Map<String, dynamic>;
+
+          await _saveUser();
+
           _isLoading = false;
           _error = null;
+
           print('✅ Register başarılı!');
+
           notifyListeners();
           return true;
         }
@@ -112,16 +132,46 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       _error = 'Hata: $e';
       _isLoading = false;
+
       print('❌ Error: $_error');
+
       notifyListeners();
       return false;
     }
   }
 
-  void logout() {
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove('currentUser');
+
     _currentUser = null;
     _error = null;
+
     notifyListeners();
+  }
+
+  Future<void> _saveUser() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (_currentUser != null) {
+      prefs.setString(
+        'currentUser',
+        jsonEncode(_currentUser),
+      );
+    }
+  }
+
+  Future<void> _loadUser() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final userData = prefs.getString('currentUser');
+
+    if (userData != null) {
+      _currentUser = jsonDecode(userData);
+
+      notifyListeners();
+    }
   }
 
   void clearError() {

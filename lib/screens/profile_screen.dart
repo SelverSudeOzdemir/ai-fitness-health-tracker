@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/ai_service.dart';
 import '../utils/app_colors.dart';
+import '../providers/auth_provider.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final VoidCallback? onProfileSaved;
@@ -121,7 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _dropdown(
                     _selectedGender,
                     _genders,
-                    (v) => setState(() => _selectedGender = v),
+                        (v) => setState(() => _selectedGender = v),
                   ),
                 ],
               ),
@@ -145,13 +148,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _dropdown(
                     _selectedGoal,
                     _goals,
-                    (v) => setState(() => _selectedGoal = v),
+                        (v) => setState(() => _selectedGoal = v),
                   ),
                 ],
               ),
               const SizedBox(height: 18),
               _goalPreview(),
               const SizedBox(height: 18),
+
+              // 1. BUTON: PROFİLİ KAYDET
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -166,19 +171,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: _isSaving ? null : _saveProfile,
                   icon: _isSaving
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.black,
-                          ),
-                        )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.black,
+                    ),
+                  )
                       : const Icon(Icons.auto_awesome_rounded),
                   label: Text(
                     _isSaving
                         ? 'AI modeli güncelleniyor...'
                         : 'Profili Kaydet ve AI Modelini Güncelle',
                     style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+
+              // ENTEGRE EDİLEN KISIM: ÇIKIŞ YAP BUTONU
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  onPressed: () async {
+                    await context.read<AuthProvider>().logout();
+
+                    if (!mounted) return;
+
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => const LoginScreen(),
+                      ),
+                          (route) => false,
+                    );
+                  },
+                  icon: const Icon(Icons.logout),
+                  label: const Text(
+                    'Çıkış Yap',
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
                     ),
@@ -192,6 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ... Diğer alt widget fonksiyonları (_profileHeader, _sectionCard, _inputDecoration vb.) aynen kalıyor.
   Widget _profileHeader() {
     return Container(
       padding: const EdgeInsets.all(22),
@@ -308,10 +350,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _numberField(
-    TextEditingController controller,
-    String hint, {
-    bool requiredField = false,
-  }) {
+      TextEditingController controller,
+      String hint, {
+        bool requiredField = false,
+      }) {
     return TextFormField(
       controller: controller,
       keyboardType: TextInputType.number,
@@ -319,20 +361,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: _inputDecoration(hint),
       validator: requiredField
           ? (value) {
-              final number = int.tryParse(value ?? '');
-              if (number == null || number < 10 || number > 100)
-                return 'Geçerli değer gir.';
-              return null;
-            }
+        final number = int.tryParse(value ?? '');
+        if (number == null || number < 10 || number > 100) {
+          return 'Geçerli değer gir.';
+        }
+        return null;
+      }
           : null,
     );
   }
 
   Widget _dropdown(
-    String value,
-    List<String> items,
-    ValueChanged<String> onChanged,
-  ) {
+      String value,
+      List<String> items,
+      ValueChanged<String> onChanged,
+      ) {
     return DropdownButtonFormField<String>(
       value: items.contains(value) ? value : items.first,
       dropdownColor: const Color(0xFF1A1A1A),
@@ -341,7 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       items: items
           .map(
             (item) => DropdownMenuItem<String>(value: item, child: Text(item)),
-          )
+      )
           .toList(),
       onChanged: (value) {
         if (value != null) onChanged(value);
